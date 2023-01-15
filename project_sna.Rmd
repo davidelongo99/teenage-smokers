@@ -1,0 +1,608 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+## Libraries
+```{r}
+if(!require('downloader')) {
+  install.packages('downloader')
+  library('downloader')
+}
+
+if(!require('networkD3')) {
+  install.packages('networkD3')
+  library('networkD3')
+}
+
+if(!require('igraph')) {
+  install.packages('igraph')
+  library('igraph')
+}
+
+if(!require('htmlwidgets')) {
+  install.packages('htmlwidgets')
+  library('htmlwidgets')
+}
+
+
+if(!require('plotly')) {
+  install.packages('plotly')
+  library('plotly')
+}
+
+```
+
+## Load the data
+```{r}
+url <- "https://www.stats.ox.ac.uk/~snijders/siena/Glasgow_data.zip"
+download(url, dest="dataset.zip", mode="wb") 
+unzip ("dataset.zip", exdir = "./")
+```
+
+```{r}
+load("Glasgow-demographic.RData")
+load("Glasgow-friendship.RData")
+load("Glasgow-substances.RData")
+load("Glasgow-various.RData")
+
+remove(money)
+remove(romantic)
+remove(alcohol)
+remove(cannabis)
+remove(friendship.2)
+```
+
+```{r}
+age <- t(data.frame(as.list(age)))
+sex.F <- t(data.frame(as.list(sex.F)))
+```
+
+```{r}
+tobacco <- tobacco[, -2]  #we need only time 1 and time 3
+tobacco <- as.data.frame(tobacco)
+tb1_na <- which(is.na(tobacco$t1))
+tb3_na <- which(is.na(tobacco$t3))
+tb_na <- sort(unique(c(tb1_na, tb3_na)))
+
+rn_na <- rownames(tobacco)[tb_na]
+print(rn_na)
+```
+
+## First matrix: number of close friends at time 1.
+
+1. Remove row and columns based on rn_na vector.
+```{r}
+f1 <- friendship.1[ !rownames(friendship.1) %in% rn_na, 
+                    !colnames(friendship.1) %in% rn_na]
+```
+
+2. Check if there are other NAs.
+```{r}
+any(is.na(f1))
+```
+3. We want to focus only on strong relationship:
+    - code 1 stands for "best friend". 
+    - code 2 for "just friends". Replace it with value 0.
+    - code 0 stands for "no friends".
+    - code 10 indicates structural absence of the tie. Replace it with value 0.
+
+```{r}
+unique(as.vector(f1))
+```
+
+```{r}
+f1[f1 == 2] <- 0
+unique(as.vector(f1))
+```
+```{r}
+# friendship matrix at time 1
+#head(f1)
+```
+
+### Visualize network of friends at time 1
+
+```{r}
+# Make an Igraph object
+g1 <- graph_from_adjacency_matrix(f1, 
+                                  mode="max", 
+                                  #weighted = NULL,
+                                  diag = F)
+
+isolated <- which(degree(g1)==0) 
+g1 <- delete.vertices(g1, isolated)
+
+# Plot
+par(mar=c(0,0,0,0))
+#plot(g1, layout = layout_nicely(g1))
+plot(g1, layout=layout_nicely(g1), 
+     vertex.size=9,
+     vertex.color = "palegreen",
+     vertex.label.cex=0.4,
+     vertex.frame.color="palegreen3",
+     vertex.label.color= "black")
+text(-1.5,1,"Friends - Time 1", cex=1)
+```
+```{r}
+# Since for the interactive network we need a dataframe, we will 
+# create a dataframe to store the indices of the 1 values ("best friends")
+df1 = data.frame(row=character(), column=character())
+
+# loop through the matrix and get the indices of the 1 values
+for (i in 1:nrow(f1)) {
+  for (j in 1:ncol(f1)) {
+    if (f1[i, j] == 1) {
+      df1 = rbind(df1, data.frame(row= rownames(f1)[i], column=colnames(f1)[j]))
+    }
+  }
+}
+
+# remove the first row which is empty
+df1 = df1[-1,]
+
+# print the dataframe
+print(df1)
+```
+
+
+```{r}
+# Interactive network
+# Plot
+p <- simpleNetwork(df1, height="100px", width="100px",
+                  nodeColour = "palegreen",    
+                  linkColour = "#666",
+                  fontFamily = "serif",
+                  opacity = 0.9,           
+                  zoom = T)
+
+p
+```
+
+```{r}
+# save the widget
+
+saveWidget(p, file=paste0( getwd(), "/networkInteractive.html"))
+```
+
+## Second matrix: close friends weighted by smoking behaviour.
+
+Let's take the first matrix *f1* (the friendship at time one) and multiply it by the row vector of the smoking behaviour at time 1. 
+
+1. As done before, let's remove rows containing or referring to subjects with not available data. 
+
+```{r}
+tobacco <- tobacco[!rownames(tobacco) %in% rn_na, ]
+
+head(tobacco)
+```
+2. Take the first column (smoking behavior at time 1) as a row vector. 
+```{r}
+tb1 <- as.vector(tobacco$t1)
+```
+
+3. Tobacco use has the scores 1 (non), 2 (occasional) and 3 (regular, i.e. more than once per week). Replace 1 with 0, while 2 (occasional) and 3 (regular) with 1. 
+```{r}
+tb1[tb1 == 1] <- 0
+tb1[tb1 == 3| tb1 == 2] <- 1
+```
+
+4. Multiply *f1* matrix by *tb1* vector.
+```{r}
+f_tb1 = t(t(f1) * tb1)
+unique(as.vector(f_tb1))
+```
+
+### Visualize network of friends weighted by smoking behaviour at time 1
+
+
+```{r}
+#Create a dataframe with smoking behaviour for each subject 
+df_smoking <- data.frame(smoke = tobacco$t1, name = rownames(tobacco) )
+df_smoking <- df_smoking[!rownames(df_smoking) %in% rn_na,]
+df_smoking$smoke <- ifelse(df_smoking$smoke == 1, "No","Yes" )
+
+```
+
+```{r}
+# Make an Igraph object
+g_tb1 <- graph_from_adjacency_matrix(f_tb1, 
+                                  mode="undirected", 
+                                  #weighted = NULL,
+                                  diag = F)
+
+# Color the nodes by smoking behavior 
+V(g_tb1)$shape <- ifelse(df_smoking$smoke== "No", "circle", "square")
+
+isolated <- which(degree(g_tb1)==0) 
+g_tb1 <- delete.vertices(g_tb1, isolated)
+
+# Plot
+par(mar=c(0,0,0,0))
+#plot(g1, layout = layout_nicely(g1))
+plot(g_tb1, layout=layout_nicely(g_tb1),
+     vertex.size=19,
+     vertex.label.cex=0.7,
+     vertex.color = "grey88",
+     vertex.frame.color="gray48",
+     vertex.label.color= "black")
+text(-1.5,1,"   Friends and smoking 
+     behaviour - Time 1", cex=1)
+legend(x=-1.6, y=0.8, 
+       legend= c("Non-smoker", "Smoker"), 
+       pch = c(21,22),  pt.bg= c('gray88', "gray88"),
+       bty = "n" , pt.cex = 2, cex = 0.8,
+       text.col="black" , horiz = F)
+```
+
+```{r}
+# Since for the interactive network we need a dataframe, we will 
+# create a dataframe to store the indices of the 1 values (that corresponds to smokers)
+df1_tb = data.frame(row=character(), column=character())
+
+# loop through the matrix and get the indices of the 1 values
+for (i in 1:nrow(f_tb1)) {
+  for (j in 1:ncol(f_tb1)) {
+    if (f_tb1[i, j] == 1) {
+      df1_tb = rbind(df1_tb, data.frame(row= rownames(f_tb1)[i], column=colnames(f_tb1)[j]))
+    }
+  }
+}
+
+# remove the first row which is empty
+df1_tb = df1_tb[-1,]
+
+# print the dataframe
+print(df1_tb)
+```
+
+```{r}
+# Interactive network
+# Plot
+p <- simpleNetwork(df1_tb, height="100px", width="100px",
+                  nodeColour = "gray48",    
+                  linkColour = "#666",
+                  fontFamily = "serif",
+                  opacity = 0.9,           
+                  zoom = T)
+
+p
+```
+
+## Third matrix: gender (1 = same, 0 = different)
+
+The gender information is coded 1 for boys and 2 for girls. 
+
+1. Remove rows referring to subjects with missing information.
+```{r}
+gender <- sex.F[!rownames(sex.F) %in% rn_na]
+```
+
+2. Create a matrix where 1 stands for same gender, 0 different. 
+```{r}
+same_gender <- outer(gender, gender, function(a, b) as.integer(a == b))
+dimnames(same_gender) <- list(rownames(f1), rownames(f1))
+#head(same_gender)
+```
+
+3. Now, let's perform an elementwise multiplication between the second matrix (friends and regular smoking behavior at time 1), with the gender matrix. 
+```{r}
+f_tb1_gdr = f_tb1 * same_gender
+```
+
+### Visualize network of friends weighted by smoking behaviour and according to their gender at time 1
+
+```{r}
+#Create a dataframe with gender for each subject 
+df_gender <- data.frame(sex = sex.F, name = rownames(sex.F) )
+df_gender <- df_gender[!rownames(df_gender) %in% rn_na,]
+df_gender_smoking <- merge(df_gender, df_smoking) 
+
+```
+
+
+```{r}
+# Make an Igraph object
+g_tb1_gdr <- graph_from_adjacency_matrix(f_tb1_gdr, 
+                                  mode="undirected", 
+                                  #weighted = NULL,
+                                  diag = F)
+
+# Color the nodes by gender
+V(g_tb1_gdr)$color <- ifelse(df_gender$sex == 1, "lightblue", "lightpink")
+V(g_tb1_gdr)$shape <- ifelse(df_gender_smoking$smoke== "No", "circle", "square")
+
+
+isolated <- which(degree(g_tb1_gdr)==0) 
+g_tb1_gdr <- delete.vertices(g_tb1_gdr, isolated)
+
+# Plot
+par(mar=c(0,0,0,0))
+#plot(g1, layout = layout_nicely(g1))
+plot(g_tb1_gdr, layout=layout_nicely(g_tb1_gdr),
+     vertex.size=15,
+     vertex.color=V(g_tb1_gdr)$color,
+     vertex.label.cex=0.8,
+     vertex.frame.color="gray48",
+     vertex.label.color= "black")
+text(-1.5,1,"   Friends and smoking 
+     behaviour according 
+     to gender - Time 1", cex=1)
+legend(x=-1.8, y=0.8, 
+       legend= c("Non-smoker boys", "Non-smoker girls", "Smoker boys", "Smoker girls"), 
+       col = c("lightblue", "lightpink", "lightblue", "lightpink"), 
+       pch = c(21, 21, 22, 22),  pt.bg= c("lightblue", "lightpink", "lightblue", "lightpink"),
+       bty = "n",  pt.cex = 2, cex = 0.8,
+       text.col="black" , horiz = F)
+```
+
+```{r}
+### Interactive visualization - **IT DOES NOT WOrk**
+
+# Convert the Links data frame
+#links_df <- as_data_frame(g_tb1_gdr)
+
+
+
+# create the Nodes Dataframe
+#nodes_df <- data.frame(name = c(links_df[,"from"], links_df[,"to"]))
+#remove duplicates 
+#nodes_df <- unique(nodes_df)
+#nodes_df <- merge(nodes_df, df_gender, by ="name", all.x = TRUE)
+
+```
+
+```{r}
+#forceNetwork(Links =links_df, Nodes = nodes_df , Source = "from", Target = "to",
+#             NodeID = "name", Group = "sex",
+#             fontSize=12, zoom=T, legend=T,
+#             opacity = 0.8, 
+#             width = 600, height = 600)
+
+```
+
+
+Let's perform the same operations considering values at time 3.
+
+## First matrix: number of close friends at time 3.
+
+1. Remove row and columns based on rn_na vector.
+```{r}
+f3 <- friendship.3[ !rownames(friendship.3) %in% rn_na, 
+                    !colnames(friendship.3) %in% rn_na]
+```
+
+2. Check if there are other NAs.
+```{r}
+any(is.na(f3))
+```
+3. We want to focus only on strong relationship:
+    - code 1 stands for "best friend". 
+    - code 2 for "just friends". Replace it with value 0.
+    - code 0 stands for "no friends".
+    - code 10 indicates structural absence of the tie. Replace it with value 0.
+
+```{r}
+unique(as.vector(f3))
+```
+
+```{r}
+f3[f3 == 2] <- 0
+unique(as.vector(f3))
+```
+## Second matrix: close friends weighted by smoking behaviour.
+
+Let's take the first matrix *f3* (the friendship at time one) and multiply it by the row vector of the smoking behaviour at time 3. 
+
+2. Take the first column (smoking behavior at time 3) as a row vector. 
+```{r}
+tb3 <- as.vector(tobacco$t3)
+```
+
+3. Tobacco use has the scores 1 (non), 2 (occasional) and 3 (regular, i.e. more than once per week). Replace 1 with 0, while 2 (occasional) and 3 (regular) with 1. 
+```{r}
+tb3[tb3 == 1] <- 0
+tb3[tb3 == 3| tb3 == 2] <- 1
+```
+
+4. Multiply *f3* matrix by *tb3* vector.
+```{r}
+f_tb3 = t(t(f3) * tb3)
+unique(as.vector(f_tb3))
+```
+### Visualize network of friends weighted by smoking behaviour at time 3
+
+
+```{r}
+#Create a dataframe with smoking behaviour for each subject 
+df_smoking_3 <- data.frame(smoke = tobacco$t3, name = rownames(tobacco) )
+df_smoking_3 <- df_smoking_3[!rownames(df_smoking_3) %in% rn_na,]
+df_smoking_3$smoke <- ifelse(df_smoking_3$smoke == 1, "No","Yes" )
+
+```
+
+```{r}
+# Make an Igraph object
+g_tb3 <- graph_from_adjacency_matrix(f_tb3, 
+                                  mode="undirected", 
+                                  #weighted = NULL,
+                                  diag = F)
+
+# Color the nodes by smoking behavior 
+V(g_tb3)$shape <- ifelse(df_smoking_3$smoke== "No", "circle", "square")
+
+isolated_tb3 <- which(degree(g_tb3)==0) 
+g_tb3 <- delete.vertices(g_tb3, isolated_tb3)
+
+# Plot
+par(mar=c(0,0,0,0))
+plot(g_tb3, layout=layout_nicely(g_tb3),
+     vertex.size=19,
+     vertex.label.cex=0.7,
+     vertex.color = "grey88",
+     vertex.frame.color="gray48",
+     vertex.label.color= "black")
+text(-1.5,1,"   Friends and smoking 
+     behaviour - Time 3", cex=1)
+legend(x=-1.6, y=0.8, 
+       legend= c("Non-smoker", "Smoker"), 
+       pch = c(21,22),  pt.bg= c('gray88', "gray88"),
+       bty = "n" , pt.cex = 2, cex = 0.8,
+       text.col="black" , horiz = F)
+```
+## Third matrix: gender (1 = same, 0 = different)
+
+
+2. Create a matrix where 1 stands for same gender, 0 different. 
+```{r}
+same_gender_3 <- outer(gender, gender, function(a, b) as.integer(a == b))
+dimnames(same_gender_3) <- list(rownames(f3), rownames(f3))
+#head(same_gender)
+```
+
+3. Now, let's perform an elementwise multiplication between the second matrix (friends and regular smoking behavior at time 1), with the gender matrix. 
+```{r}
+f_tb3_gdr = f_tb3 * same_gender_3
+```
+
+### Visualize network of friends weighted by smoking behaviour and according to their gender at time 3
+
+```{r}
+#Create a dataframe with gender for each subject 
+df_gender_3 <- data.frame(sex = sex.F, name = rownames(sex.F) )
+df_gender_3 <- df_gender_3[!rownames(df_gender_3) %in% rn_na,]
+df_gender_smoking_3 <- merge(df_gender_3, df_smoking_3) 
+
+```
+
+
+```{r}
+# Make an Igraph object
+g_tb3_gdr <- graph_from_adjacency_matrix(f_tb3_gdr, 
+                                  mode="undirected", 
+                                  #weighted = NULL,
+                                  diag = F)
+
+# Color the nodes by gender
+V(g_tb3_gdr)$color <- ifelse(df_gender_3$sex == 1, "lightblue", "lightpink")
+V(g_tb3_gdr)$shape <- ifelse(df_gender_smoking_3$smoke== "No", "circle", "square")
+
+
+isolated_tb3_gdr <- which(degree(g_tb3_gdr)==0) 
+g_tb3_gdr <- delete.vertices(g_tb3_gdr, isolated_tb3_gdr)
+
+# Plot
+par(mar=c(0,0,0,0))
+#plot(g1, layout = layout_nicely(g1))
+plot(g_tb3_gdr, layout=layout_nicely(g_tb3_gdr),
+     vertex.size=15,
+     vertex.color=V(g_tb3_gdr)$color,
+     vertex.label.cex=0.8,
+     vertex.frame.color="gray48",
+     vertex.label.color= "black")
+text(-1.5,1,"   Friends and smoking 
+     behaviour according 
+     to gender - Time 3", cex=1)
+legend(x=-1.8, y=0.8, 
+       legend= c("Non-smoker boys", "Non-smoker girls", "Smoker boys", "Smoker girls"), 
+       col = c("lightblue", "lightpink", "lightblue", "lightpink"), 
+       pch = c(21, 21, 22, 22),  pt.bg= c("lightblue", "lightpink", "lightblue", "lightpink"),
+       bty = "n",  pt.cex = 2, cex = 0.8,
+       text.col="black" , horiz = F)
+```
+
+
+
+## Regression
+
+First, let's create a data frame, with subjects as rows (n=131) and four columns:
+
+1. *n_f*  = number of friends at time 1, given by the row sum in the first matrix (friendship).
+2. *n_fs* = number of smoker friends (occasional or regular) at time 1, by taking the sum of corresponding row for each student in the second matrix. 
+3. *n_fsg* = number of smoker friends with the same gender as the subject. It is obtained by taking the sum of each row in the third matrix. 
+4. *smoking* = smoking behavior at time 3. This is the output variable. 
+
+```{r}
+# n_f = number of friends at time 1.
+n_f = rowSums(f1)
+
+# n_fs = number of smoker friends 
+n_fs = rowSums(f_tb1)
+
+# n_fsg = number of smoker friends with the same gender as the subject
+n_fsg = rowSums(f_tb1_gdr)
+
+# tb3 = smoking behavior at time 3. 
+tb3 <- as.vector(tobacco$t3)
+setNames(tb3, rownames(tobacco))
+tb3[tb3 == 1] <- 0  # non-smoker 
+tb3[tb3 == 3| tb3 == 2] <- 1 #regular or occasional smoker
+
+```
+
+```{r}
+#df_r is "data frame for regression"
+
+df_r = data.frame(n_f, n_fs, n_fsg, tb1, tb3)
+head(df_r, 10)
+```
+```{r}
+logistic_model <- glm(tb3 ~ n_f + n_fs + n_fsg, 
+                      data = df_r, 
+                      family = "binomial")
+   
+# Summary
+summary(logistic_model)
+```
+```{r}
+exp(-0.3852)  # number of friends
+```
+
+The regression coefficient for *n_f* is -0.3852. An increase of one unit in the number of friends at time 1 is associated with a decrease in the probability of being smokers at time 3 of exp(-0.3852) = 0.68 times.
+
+There is no clear evidence of a real association between the number of friends at time 1 *n_f* and the smoking behavior at time 3 *tb_3*. In fact, at the value of 0.18, the p-value of the estimated coefficient is relatively large. We accept the null-hypothesis that the coefficient in question is zero. 
+
+Also the other statistical tests resulted in non-significant p-values. This can be due to the correlation between the set of predictors. As shown below, if taken on its own, the variable *n_fs*, the number of smoker friends at time 1, is significant and with positive sign. 
+
+```{r}
+cor(df_r)
+```
+The variables *n_fs*, the number of smoker friends, and *n_fsg*, the number of smoker friends of the same gender, have a correlation coefficient $\rho = 0.96$. 
+
+```{r}
+logistic_model_n_fs <- glm(tb3 ~ n_f + n_fs, 
+                      data = df_r, 
+                      family = "binomial")
+
+
+summary(logistic_model_n_fs)
+```
+```{r}
+exp(2.0218)
+```
+
+By considering only the number of smoking friends at time 1 (*n_fs*), the estimated coefficient $\beta_{NFS}$ in the logit model is equal to $2.0218$ Again, this means that for one unite increase in the number of friends who smoke, the probability of being a smoker at time 3 increases by approximately 7.5 times. Since the p-value is lower than $\alpha$ = 0.05, we reject the null-hypothesis of the estimate being equal to zero. That is to say, there is a strong and statistically significant association between the predictor and the outcome.
+
+```{r}
+logistic_model_n_fsg <- glm(tb3 ~ n_f + n_fsg, 
+                      data = df_r, 
+                      family = "binomial")
+
+
+summary(logistic_model_n_fsg)
+```
+```{r}
+exp(2.2690)
+```
+For one unite increase in the number of smoker friends of the same gender at time 1 *n_fsg*, there is an increase in the odds of becoming a smoker at time 3 of at least 9 times. We reject the null-hypothesis of the coefficient being zero, i.e. there is statistical evidence underlying the association between the number of smoker friends of the same gender as the subject and smoking initiation in the following two years. 
+
+
+
+
+
+
+
+
+
+
+
