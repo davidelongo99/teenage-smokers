@@ -140,6 +140,7 @@ plot(g1, layout=layout_nicely(g1),
      vertex.label.color= "black")
 text(-1.5,1,"Friends - Time 1", cex=1)
 ```
+
 ```{r}
 # Since for the interactive network we need a dataframe, we will 
 # create a dataframe to store the indices of the 1 values ("best friends")
@@ -176,7 +177,7 @@ p
 ```
 
 ```{r}
-# save the widget
+#code to  save the widget
 
 saveWidget(p, file=paste0( getwd(), "/networkInteractive.html"))
 ```
@@ -251,39 +252,7 @@ legend(x=-1.6, y=0.8,
        text.col="black" , horiz = F)
 ```
 
-```{r}
-# Since for the interactive network we need a dataframe, we will 
-# create a dataframe to store the indices of the 1 values (that corresponds to smokers)
-df1_tb = data.frame(row=character(), column=character())
 
-# loop through the matrix and get the indices of the 1 values
-for (i in 1:nrow(f_tb1)) {
-  for (j in 1:ncol(f_tb1)) {
-    if (f_tb1[i, j] == 1) {
-      df1_tb = rbind(df1_tb, data.frame(row= rownames(f_tb1)[i], column=colnames(f_tb1)[j]))
-    }
-  }
-}
-
-# remove the first row which is empty
-df1_tb = df1_tb[-1,]
-
-# print the dataframe
-print(df1_tb)
-```
-
-```{r}
-# Interactive network
-# Plot
-p <- simpleNetwork(df1_tb, height="100px", width="100px",
-                  nodeColour = "gray48",    
-                  linkColour = "#666",
-                  fontFamily = "serif",
-                  opacity = 0.9,           
-                  zoom = T)
-
-p
-```
 
 ## Third matrix: gender (1 = same, 0 = different)
 
@@ -352,30 +321,6 @@ legend(x=-1.8, y=0.8,
        text.col="black" , horiz = F)
 ```
 
-```{r}
-### Interactive visualization - **IT DOES NOT WOrk**
-
-# Convert the Links data frame
-#links_df <- as_data_frame(g_tb1_gdr)
-
-
-
-# create the Nodes Dataframe
-#nodes_df <- data.frame(name = c(links_df[,"from"], links_df[,"to"]))
-#remove duplicates 
-#nodes_df <- unique(nodes_df)
-#nodes_df <- merge(nodes_df, df_gender, by ="name", all.x = TRUE)
-
-```
-
-```{r}
-#forceNetwork(Links =links_df, Nodes = nodes_df , Source = "from", Target = "to",
-#             NodeID = "name", Group = "sex",
-#             fontSize=12, zoom=T, legend=T,
-#             opacity = 0.8, 
-#             width = 600, height = 600)
-
-```
 
 # Time 3
 Let's perform the same operations considering values at time 3.
@@ -410,24 +355,24 @@ unique(as.vector(f3))
 
 Let's take the first matrix *f3* (the friendship at time one) and multiply it by the row vector of the smoking behaviour at time 3. 
 
-2. Take the first column (smoking behavior at time 3) as a row vector. 
+1. Take the first column (smoking behavior at time 3) as a row vector. 
 ```{r}
 tb3 <- as.vector(tobacco$t3)
 ```
 
-3. Tobacco use has the scores 1 (non), 2 (occasional) and 3 (regular, i.e. more than once per week). Replace 1 with 0, while 2 (occasional) and 3 (regular) with 1. 
+2. Tobacco use has the scores 1 (non), 2 (occasional) and 3 (regular, i.e. more than once per week). Replace 1 with 0, while 2 (occasional) and 3 (regular) with 1. 
 ```{r}
 tb3[tb3 == 1] <- 0
 tb3[tb3 == 3| tb3 == 2] <- 1
 ```
 
-4. Multiply *f3* matrix by *tb3* vector.
+3. Multiply *f3* matrix by *tb3* vector.
 ```{r}
 f_tb3 = t(t(f3) * tb3)
 unique(as.vector(f_tb3))
 ```
-### Visualize network of friends weighted by smoking behaviour at time 3
 
+### Visualize network of friends weighted by smoking behaviour at time 3
 
 ```{r}
 #Create a dataframe with smoking behaviour for each subject 
@@ -469,14 +414,14 @@ legend(x=-1.6, y=0.8,
 
 ## Third matrix: gender (1 = same, 0 = different)
 
-2. Create a matrix where 1 stands for same gender, 0 different. 
+1. Create a matrix where 1 stands for same gender, 0 different. 
 ```{r}
 same_gender_3 <- outer(gender, gender, function(a, b) as.integer(a == b))
 dimnames(same_gender_3) <- list(rownames(f3), rownames(f3))
 #head(same_gender)
 ```
 
-3. Now, let's perform an elementwise multiplication between the second matrix (friends and regular smoking behavior at time 1), with the gender matrix. 
+2. Now, let's perform an elementwise multiplication between the second matrix (friends and regular smoking behavior at time 1), with the gender matrix. 
 ```{r}
 f_tb3_gdr = f_tb3 * same_gender_3
 ```
