@@ -3,8 +3,23 @@ title: "R Notebook"
 output:
   html_document:
     df_print: paged
+    theme: readable
+    toc: true
+    toc_float: true
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
 ---
-## Libraries
+
+```{r setup, include=FALSE}
+library(class)
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE,
+                      tidy.opts=list(width.cutoff = 60),
+                      tidy = TRUE)
+```
+
+# Libraries
 ```{r}
 if(!require('downloader')) {
   install.packages('downloader')
@@ -34,7 +49,7 @@ if(!require('plotly')) {
 
 ```
 
-## Load the data
+# Load the data
 ```{r}
 url <- "https://www.stats.ox.ac.uk/~snijders/siena/Glasgow_data.zip"
 download(url, dest="dataset.zip", mode="wb") 
@@ -69,6 +84,7 @@ tb_na <- sort(unique(c(tb1_na, tb3_na)))
 rn_na <- rownames(tobacco)[tb_na]
 print(rn_na)
 ```
+# Time 1
 
 ## First matrix: number of close friends at time 1.
 
@@ -361,7 +377,7 @@ legend(x=-1.8, y=0.8,
 
 ```
 
-
+# Time 3
 Let's perform the same operations considering values at time 3.
 
 ## First matrix: number of close friends at time 3.
@@ -450,8 +466,8 @@ legend(x=-1.6, y=0.8,
        bty = "n" , pt.cex = 2, cex = 0.8,
        text.col="black" , horiz = F)
 ```
-## Third matrix: gender (1 = same, 0 = different)
 
+## Third matrix: gender (1 = same, 0 = different)
 
 2. Create a matrix where 1 stands for same gender, 0 different. 
 ```{r}
@@ -513,7 +529,7 @@ legend(x=-1.8, y=0.8,
 
 
 
-## Regression
+# Regression
 
 First, let's create a data frame, with subjects as rows (n=131) and four columns:
 
